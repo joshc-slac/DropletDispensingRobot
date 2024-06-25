@@ -24,5 +24,4 @@ class TestResponse:
         # TEST Status
         resp = client.get_status()
         web_server.kill_web_server()
-        print(f"got response {resp}")
         assert resp.RESULTS == json_handler.get_endpoint_data("/DoD/get/Status")

@@ -15,3 +15,6 @@ class ServerResponse:
         self.ERROR_MESSAGE = response["ErrorMessage"]
         self.RESULTS = response["Result"]
 
+    def __str__(self):
+        return f" TIME: {self.TIME}\n STATUS: {self.STATUS}\n LAST_ID: {self.LAST_ID}\n ERROR_CODE: {self.ERROR_CODE}\n ERROR_MESSAGE: {self.ERROR_MESSAGE}\n RESULTS: {self.RESULTS}\n"
+

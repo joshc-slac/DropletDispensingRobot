@@ -1,8 +1,9 @@
 import json
+import os
 from drops.helpers.JsonFileHandler import JsonFileHandler
 
 
-supported_json = "drops/supported.json"
+supported_json = "tests/test_supported.json"
 
 
 class TestJsonFileHandler:
@@ -28,3 +29,29 @@ class TestJsonFileHandler:
                         }
 
         assert json_handler.get_endpoint_data("/DoD/get/Status") == expected_resp
+
+    def test_file_add_endpoint(self, capsys):
+        new_file = "tests/blank_supported.json"
+
+        json_handler = JsonFileHandler(new_file)
+        json_handler.create_new_supported_file()
+
+        assert json_handler.get_endpoint_data("/DoD/get/Status") == None
+        json_handler.reload_endpoints()
+
+        expected_resp = {"Position": {
+                            "X": 0,
+                            "Y": 0,
+                            "Z": 500
+                        },
+                        "LastProbe": "",
+                        "Humidity": 10,
+                        "Temperature": 228,
+                        "BathTemp": -99
+                        }
+
+        json_handler.add_endpoint("/DoD/get/Status", expected_resp)
+
+        assert json_handler.get_endpoint_data("/DoD/get/Status") == expected_resp
+        os.remove(new_file)
+

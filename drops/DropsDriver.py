@@ -47,7 +47,7 @@ class myClient:
     self.conn = HTTPConnection(host=self.__IP__, port=self.__PORT__)
     self.transceiver = HTTPTransceiver(self.conn, self.__queue__, self.__queue_ready__)
     logger.info(f"Connected to ip: {ip} port: {port}")
-    
+
     # configuration persitence, updating
     self.supported_ends_handler = SupportedEndsHandler(supported_json,
                                                        self.conn)
@@ -57,6 +57,10 @@ class myClient:
     # convinient member lambda for grabbing supported endpoitns
     self.supported_ends = lambda : self.supported_ends_handler.get_endpoints()
     pprint.pprint(self.supported_ends())
+
+  def __del__(self):
+      # close network connection
+      self.conn.close()
 
   '''
   Middleware interaction defintions
@@ -69,28 +73,27 @@ class myClient:
     Define a decorator function to adorn all of these 'high' middleware calls
     Logs what functions is being called and returns the response. 
     '''
-    def inner(self):
+    def inner(self, *args):
       logger.info(f"Invoking {func.__name__}")
-      func(self)
+      func(self, *args)
       return self.get_response()
     return inner
 
   @middle_invocation_wrapper
-  def connect(self):
+  def connect(self, user : str):
       """
         Required to send 'Do' requests
       """
-      self.send("/DoD/Connect?ClientName={value}")
+      self.send(f"/DoD/Connect?ClientName={user}")
 
+  @middle_invocation_wrapper
   def disconnect(self):
       """
         The client can end the connection with access to ‘Do’ requests.
         Clicking the button ‘Disable API Control’ on the UI has the same effect.
       """
-      logger.info(f"Sending: /DoD/Disconnect")
       self.send("/DoD/Disconnect")
-      return self.get_response()
-  
+
   @middle_invocation_wrapper
   def get_status(self):
       """
@@ -98,30 +101,29 @@ class myClient:
       """
       self.send("/DoD/get/Status")
 
+
+  @middle_invocation_wrapper
   def move(self, position : str):
       """
         Moves the drive to a position taken from the list of 'PositionNames'
       """
-      logger.info(f"Sending: /DoD/do/Move?PositionName={position}")
       self.send(f"/DoD/do/Move?PositionName={position}")
-      return self.get_response()
 
+  @middle_invocation_wrapper
   def get_position_names(self):
       """
         Returns the list of positions in DOD robot
       """
-      logger.info(f"Sending: /DoD/get/PositionNames")
       self.send(f"/DoD/get/PositionNames")
-      return self.get_response()
 
+  @middle_invocation_wrapper
   def get_task_names(self):
       """
         Returns the list of tasks that are stored in the Robot by name
       """
-      logger.info(f"Sending: /DoD/get/TaskNames")
       self.send(f"/DoD/get/TaskNames")
-      return self.get_response()
 
+  @middle_invocation_wrapper
   def get_current_positions(self):
       """
         Returns the name and properties of the last selected position,
@@ -129,30 +131,27 @@ class myClient:
         (The drives can have been stepped away from the stored position or
          they include small dispenser related offsets.)
       """
-      logger.info(f"Sending: /DoD/get/CurrentPosition")
-      self.send(f"/DoD/get/TaskNames")
-      return self.get_response()
+      self.send(f"/DoD/get/CurrentPosition")
 
+  @middle_invocation_wrapper
   def execute_task(self, value : str):
       """
         Runs a task from the list of ‘TaskName’.
         This operation is safe in general.
         It simulates the analog action on the UI.
       """
-      logger.info(f"Sending: DoD/do/ExecuteTask?TaskName={value}")
-      self.send(f"DoD/do/ExecuteTask?TaskName={value}")
-      return self.get_response()
+      self.send(f"/DoD/do/ExecuteTask?TaskName={value}")
 
+  @middle_invocation_wrapper
   def auto_drop(self):
       """
         Runs the particular task that is linked to the UI button.
         Its name is ‘AutoDropDetection’. In principalm this endpoint is not needed.
         ‘ExecuteTask’ can be used instead.
       """
-      logger.info(f"Sending: /DoD/do/AutoDrop")
       self.send(f"/DoD/do/AutoDrop")
-      return self.get_response()
 
+  @middle_invocation_wrapper
   def move_to_interaction_point(self):
       """
         The moving to the predefined position of the interaction point corresponds
@@ -160,11 +159,9 @@ class myClient:
         elemts for the dispensers’ position adjustment become visible on the UI.
         The request simulates the button (beam simbol) on the UI.
       """
-
-      logger.info(f"Sending: /DoD/do/InteractionPoint")
       self.send(f"/DoD/do/InteractionPoint")
-      return self.get_response()
 
+  @middle_invocation_wrapper
   def move_x(self, value : float):
       """
         The X drive can be sent to any coordinate (the value’s unit is µm)
@@ -175,10 +172,195 @@ class myClient:
         to the selected coordinate can lead to collision or breaking of a
         dispenser Tip.
       """
-
-      logger.info(f"Sending: /DoD/do/MoveX?X={value}")
       self.send(f"/DoD/do/MoveX?X={value}")
-      return self.get_response()
+
+    ## API V2
+  @middle_invocation_wrapper
+  def get_pulse_names(self):
+      """
+        Returns the list of available pulse shapes for the sciPULSE channels.
+      """
+      self.send(f"/DoD/get/PulseNames")
+
+  @middle_invocation_wrapper
+  def get_nozzle_status(self):
+      """
+        Returns the activated and selected nozzles an the parameters for all
+        activated nozzles. The parameter ‘Trigger’ (true/false) is not linked
+        to a nozzle.
+
+        Note: Nozzle parameters
+        ‘ID’ (number),
+        ‘Volt’,
+        ‘Pulse’ (name or number),
+        ‘Freq’ ,
+        ‘Volume’ appear as an array of strings (JSON).
+      """
+      self.send("/DoD/get/NozzleStatus")
+
+  @middle_invocation_wrapper
+  def select_nozzle(self, channel: str):
+      """
+        Set the selected nozzle for dispensing and task execution etc.
+        Returns a reject if the channel value is not one of the
+        ‘Activated Nozzles’ (see ‘NozzleStatus’).
+      """
+      self.send(f"/DoD/do/SelectNozzle?Channel={channel}")
+
+
+  @middle_invocation_wrapper
+  def dispensing(self, state: str):
+      """
+        Switches between the dispensing states
+        ‘Trigger’ (includes ‘Stat Continuous Dispensing’),
+        ‘Free’ (‘Continuous Dispensing’ without trigger) and
+        ‘Off’. Returns a reject if the value is not one of the three strings.
+
+        (Some tasks can set the state to ‘Off’ without restarting dispensing afterwards.)
+      """
+      self.send(f"/DoD/do/Dispensing?State={state}")
+
+
+  @middle_invocation_wrapper
+  def setLED(self, duration: int, delay : int):
+      """
+      Sets the two strobe LED parameters ‘Delay’ (0 to 6500) and Duration (1 to 65000).
+      Returns a reject if one of the values is out of range.
+      """
+      self.send(f"/DoD/do/SetLED?Duration={duration}&Delay={delay}")
+
+  @middle_invocation_wrapper
+  def move_y(self, value : float):
+      """
+          Same as for X
+      """
+      self.send(f"/DoD/do/MoveY?Y={value}")
+
+  @middle_invocation_wrapper
+  def move_z(self, value : float):
+      """
+          Same as for X
+      """
+      self.send(f"/DoD/do/MoveZ?Z={value}")
+
+  @middle_invocation_wrapper
+  def take_probe(self, channel : int, probe_well : float, volume : float):
+      """
+      This endpoint requires the presence of the task ‘ProbeUptake’ (attached).
+      If that is not given, the return is not a reject, but nothing happens.
+      The parameters are
+
+        ‘Channel’ (number of nozzle, includes effect as ‘SelectNozzle’),
+        ‘ProbeWell’ (e.g. A1), Volume (µL). Returns a reject  if ‘Channel’ is not among
+        ‘Active Nozzles’, Volume is > 250 or
+        ‘ProbeWell’ is not one of the allowed wells for the selected nozzle.
+
+      """
+      self.send(f"/DoD/do/TakeProbe?Channel={channel}&ProbeWell={probe_well}&Volume={volume}")
+
+## API V3 ##
+
+  @middle_invocation_wrapper
+  def get_task_details(self, task_name):
+    '''
+        Returns the content of the tasks that is specified be ‘TaskName’.
+    '''
+    self.send(f"/DoD/get/TaskDetails?TaskName={task_name}")
+
+  @middle_invocation_wrapper
+  def get_drive_range(self):
+    '''
+      Returns the maximum range of each axis (X,Y,Z) in units of µm.
+    '''
+    self.send(f"/DoD/get/DriveRange")
+
+  @middle_invocation_wrapper
+  def set_nozzle_parameters(self, channel):
+    '''
+        Sets the selected nozzle for dispensing and task execution etc.
+        Returns a reject if the channel value is not one of the
+            ‘Activated Nozzles’ (see NozzleStatus (get)).
+    '''
+    self.send(f"/DoD/do/SelectNozzle?Channel={channel}")
+
+  @middle_invocation_wrapper
+  def stop_task(self):
+    '''
+            Stops the running task (and moves).
+    '''
+    self.send(f"/DoD/do/StopTask")
+
+  @middle_invocation_wrapper
+  def take_probe(self, channel, probe_well, volume):
+    '''
+            This endpoint requires the presence of the task ‘ProbeUptake’ (attached).
+            If that is not given, the return is not a reject, but nothing happens.
+            The parameters are ‘Channel’ (number of nozzle, includes effect as
+                                              ‘SelectNozzle’), ‘ProbeWell’ (e.g. A1), Volume (µL).
+
+            Returns a reject if ‘Channel’ is not among ‘Active Nozzles’,
+                Volume is > 250 or ‘ProbeWell’ is not one of the allowed wells
+                for the selected nozzle.
+    '''
+    self.send(f"DoD/do/TakeProbe?Channel={channel}&ProbeWell={probe_well}&Volume={volume}")
+
+  @middle_invocation_wrapper
+  def set_ip_offest(self):
+    '''
+            This endpoint uses the current coordinates for the currently selected
+            nozzle (SelectNozzle) to set the IP position (Nozzle 1) or calculates
+            and sets the IP offsets (Nozzles 2, …).
+            (Note: The ‘Nozzle Offset’ values in the nozzle parameter table are
+             always considered.
+             Changing these would require a readjustment of the IP offsets.)
+            Offsets are rejected if they exceed a maximum of 2 mm.
+            Thus, the selected nozzle must be moved to the IP (InteractionPoint)
+            before requesting SetIPOffset.
+    '''
+    self.send(f"/DoD/do/InteractionPoint")
+
+  @middle_invocation_wrapper
+  def set_humidity(self, value):
+    '''
+        Sets the wanted relative humidity as %rH. Values are integer.
+    '''
+    self.send(f"/DoD/do/SetHumidity?rH={value}")
+
+  @middle_invocation_wrapper
+  def set_cooling_temp(self, temp):
+    '''
+            Sets the temperature of the cooling device.
+            Besides the setting of a °C value (float),
+                there is the option to send the string “dewpoint”,
+                which enables an automatic adjustment.
+    '''
+    self.send(f"/DoD/do/SetCoolingTemp?Temp={temp}")
+
+  @middle_invocation_wrapper
+  def close_dialog(self, reference, selection):
+    '''
+            In situations of “Status” = “Dialog” the endpoint Status provides the
+                dialog’s reference, message text and button labels.
+            (If the response of ‘Button2’ is empty, there is only one selection
+             available, typically with the label ‘OK.).
+            This endpoint allows to close the dialog by specifying the reference and t
+                he selection (“1” or “2”).
+            The reference is individual, incrementing integer for each occurrence
+                of a dialog, it starts a “1” when the device is initialized.
+
+            In case of more than one open dialogs “Status” reports the last one,
+                which is typically the first to be closed.
+            But the remote control can try to close the earlier dialog.
+    '''
+    self.send(f"/DoD/do/CloseDialog?Reference={reference}&Selection={selection}")
+
+  @middle_invocation_wrapper
+  def reset_error(self):
+    '''
+            This endpoint is needed if after closing all (error) dialogs the status 
+            “Error” persists and “ErrorMessage” (header) is not “NA”.
+    '''
+    self.send(f"/DoD/do/ResetError")
 
   '''
   send transmits a formatted HTTP GET request
@@ -197,19 +379,18 @@ class myClient:
 
 
 if __name__ == "__main__":
-  logging.basicConfig(level=logging.DEBUG)
-  # init connection to client
-  # client = myClient(ip="172.21.148.101", port=9999)
-  client = myClient(ip="127.0.0.1", port=8081)
-  # check validity of user specified arg
-  args = parse_arguments(client)
-
-  # transmit command
-  if (args.connect):
-    client.send("/DoD/Connect?ClientName={value}")
-  elif (args.disconnect):
-    client.send("/DoD/Disconnect")
-  else:
-    client.send(args.get)
-  x = client.get_response()
-  print(x.RESULTS)
+    logging.basicConfig(level=logging.DEBUG)
+    # init connection to client
+    client = myClient(ip="172.21.148.101", port=9999)
+    #client = myClient(ip="127.0.0.1", port=8081)
+    # check validity of user specified arg
+    args = parse_arguments(client)
+    # transmit command
+    if (args.connect):
+        client.send("/DoD/Connect?ClientName={value}")
+    elif (args.disconnect):
+        client.send("/DoD/Disconnect")
+    else:
+        client.send(args.get)
+        x = client.get_response()
+        print(x.RESULTS)

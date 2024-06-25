@@ -2,3 +2,5 @@ venv/
 env/
 **__pycache__**
 **egg**
+.pytest_cache/
+.git/
